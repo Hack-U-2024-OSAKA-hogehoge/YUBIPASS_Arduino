@@ -23,6 +23,8 @@ def get_user_download_folder():
     # ユーザーフォルダのパスを取得
     user_folder = os.path.expanduser("~")
     folder = os.path.join(user_folder, "Downloads")
+    if os.path.exists(folder)==False:
+        folder = os.getcwd()
     return folder
 
 def assembleBMPHeader(width, height, depth, includePalette=False):
