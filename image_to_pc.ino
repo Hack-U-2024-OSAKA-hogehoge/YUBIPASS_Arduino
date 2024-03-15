@@ -8,9 +8,9 @@
 #define TFT_MISO 12
 #define TFT_SCK 13
 #define TFT_MOSI 11
-#define TFT_DC 8
-#define TFT_RST 9
-#define TFT_CS 10
+#define TFT_DC 10
+#define TFT_RST 8
+#define TFT_CS 9
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCK, TFT_RST, TFT_MISO);
 
@@ -23,63 +23,77 @@ FPMSystemParams params;
 /* for convenience */
 #define PRINTF_BUF_SZ 60
 char printfBuf[PRINTF_BUF_SZ];
-//String cmd;
+String text;
+int angle = 0;
 
 void setup() {
+  randomSeed(analogRead(0));
+  angle = random(360);
   Serial.begin(115200);  //speed for usb/pc, maximum measured at 115200. need set tha same setting as pc.
   fserial.begin(57600);  //speed for fingerprint sensor, only at 57600.
   tft.begin();           //Diplay setup
 
-  tft.setRotation(3);
+  tft.setRotation(1);
   tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(0, 0);
   tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(0, 60);
   tft.setTextSize(3);
-  tft.println("Hi! I'm Aketaro");
+  tft.println("Hi! I'm\n");
+  tft.setCursor(70, 100);
+  tft.setTextSize(5);
+  tft.setTextColor(ILI9341_YELLOW);
+  tft.println("Aketaro");
   Serial.println("Hi! I'm Aketaro");
-  tft.setTextSize(2);
 
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(0, 200);
+  tft.setTextSize(1);
   if (finger.begin()) {
     finger.readParams(&params);
-    tft.println("Found fingerprint sensor!");
+    tft.setTextColor(ILI9341_BLUE);
+    tft.println("\n\nFound fingerprint sensor!\nstarting...");
     Serial.println("Found fingerprint sensor!");
   } else {
-    tft.println("Did not find fingerprint sensor :(");
+    tft.setTextColor(ILI9341_RED);
+    tft.println("\n\nDid not find fingerprint sensor :(\ncheck the sensor!");
     Serial.println("Did not find fingerprint sensor :(");
     while (1) yield();
   }
+  tft.setTextColor(ILI9341_WHITE);
 }
 
 
 void loop() {
-  //   for(int jt=0; jt<200; jt++){//コマンドの受付
-  //   cmd = receive();
-  //   delay(100);
-  // };
+  for (int jt = 0; jt < 200; jt++) {  //コマンドの受付
+    delay(100);
+    text = receive();
+  };
 
-  // if(cmd=="send_finger"){//コマンドの処理
-  //     imageToPc();
-  //     while (1) yield();
-  // };
-  imageToPc();
-  while (1) yield();
+  if (text == "send_finger") {  //コマンドの処理
+    imageToPc();
+  } else {
+    angle %= 360;
+    testMovingEyes(angle);
+    angle += 60;
+  }
 }
 
 
 //コマンド受信部
-// String receive() {
-//   if (0 < Serial.available()) {
-//     // 終了文字まで取得
-//     cmd = Serial.readStringUntil('\n');
-//     Serial.println(cmd);
-//     tft.println(cmd);
-//   }
-
-//   return cmd;
-// }
+String receive() {
+  if (0 < Serial.available()) {
+    // 終了文字まで取得
+    text = Serial.readStringUntil('\n');
+    Serial.println(text);
+  }
+  return text;
+}
 
 
 uint32_t imageToPc(void) {
+  tft.setCursor(0, 0);
+  tft.setTextSize(2);
+  tft.fillScreen(ILI9341_BLACK);
   FPMStatus status;
 
   /* Take a snapshot of the finger */
@@ -91,12 +105,12 @@ uint32_t imageToPc(void) {
     status = finger.getImage();
     switch (status) {
       case FPMStatus::OK:
-        tft.println("\nImage taken.");
+        tft.println("\n\nImage taken!");
         Serial.println("\nImage taken.");
         break;
 
       case FPMStatus::NOFINGER:
-        if (i < 51) {
+        if (i < 101) {
           if (i % 5 == 0) {
             tft.print(".");
             Serial.print(".");
@@ -115,11 +129,10 @@ uint32_t imageToPc(void) {
         Serial.println(printfBuf);
         break;
     }
-
     yield();
   } while (status != FPMStatus::OK);
 
-  tft.println("Starting image stream...");
+  tft.println("\nStarting image stream...");
   /* Initiate the image transfer */
   status = finger.downloadImage();
 
@@ -134,10 +147,8 @@ uint32_t imageToPc(void) {
       Serial.println(printfBuf);
       return 0;
   }
-
   /* Send some arbitrary signature to the PC, to indicate the start of the image stream */
   Serial.write(0xAA);
-
   uint32_t totalRead = 0;
   uint16_t readLen = 0;
 
@@ -153,15 +164,57 @@ uint32_t imageToPc(void) {
       Serial.println(printfBuf);
       return 0;
     }
-
     totalRead += readLen;
-
     yield();
   }
-
   Serial.println();
   Serial.print(totalRead);
   Serial.println(" bytes transferred.");
-  tft.println("transferred.");
+  tft.println("Transferred!");
+  tft.println("\n\nWait for generate pass.");
+
+  text="";
+  while(text.length()==0){
+    text = receive();
+    delay(100);
+  }
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(0, 60);
+  tft.setTextSize(3);
+  tft.println("Password is\n");
+  tft.setCursor(0, 100);
+  tft.setTextSize(5);
+  tft.println(text);
+  delay(5000);
+
   return totalRead;
+}
+
+
+// 目を描く関数
+void drawEye(int x, int y, int size, int pupilOffsetX, int pupilOffsetY) {
+  int pupilSize = size / 4;  // 瞳のサイズは目のサイズの1/4とする
+  int pupilX = x + pupilOffsetX;
+  int pupilY = y + pupilOffsetY;
+  // 目 (外側の円)
+  tft.fillCircle(x, y, size, ILI9341_WHITE);
+  // 瞳 (内側の小さい円)
+  tft.fillCircle(pupilX, pupilY, pupilSize, ILI9341_BLACK);
+}
+
+// アニメーションをテストする関数
+void testMovingEyes(int angle) {
+  int eyeSize = 50;
+  int centerX = tft.width() / 2;
+  int centerY = tft.height() / 2;
+  int eyeSpacing = 200;    // 目の間隔
+  int movementRange = 30;  // 瞳の動く範囲
+  int pupilOffsetX = cos(radians(angle)) * movementRange;
+  int pupilOffsetY = sin(radians(angle)) * movementRange;
+  tft.setCursor(0, 0);
+  tft.fillScreen(ILI9341_BLACK);  // 画面をクリア
+  // 左の目
+  drawEye(centerX - eyeSpacing / 2, centerY, eyeSize, pupilOffsetX, pupilOffsetY);
+  // 右の目
+  drawEye(centerX + eyeSpacing / 2, centerY, eyeSize, pupilOffsetX, pupilOffsetY);
 }
